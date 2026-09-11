@@ -23,13 +23,27 @@ body,
 .page-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 12px 20px;
+}
+
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .page-header h1 {
   font-size: 22px;
   margin: 0;
+}
+
+.meta {
+  font-size: 13px;
+  opacity: 0.6;
 }
 
 .status-pill {
@@ -50,6 +64,32 @@ body,
   color: #a16207;
 }
 
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.search {
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 10px;
+  min-width: 200px;
+  border: 1px solid rgba(128, 128, 128, 0.4);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
 .grid-wrapper {
   flex: 1;
   min-height: 0;
@@ -58,4 +98,15 @@ body,
 
 .grid-wrapper .ag-root-wrapper {
   height: 100%;
+}
+
+/* Spread direction at a glance. */
+.spread-positive {
+  color: #16a34a;
+  text-align: right;
+}
+
+.spread-negative {
+  color: #dc2626;
+  text-align: right;
 }

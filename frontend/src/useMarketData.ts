@@ -1,12 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+// The backend owns the wire contract; importing the type (erased at build
+// time) keeps the two sides from drifting apart silently.
+import type { ComputedRow } from "../../backend/src/market/rowState";
 
-export interface Row {
-  symbol: string;
-  stockLtp: number | null;
-  futureLtp: number | null;
-  buySpread: number | null;
-  sellSpread: number | null;
-}
+export type Row = ComputedRow;
 
 interface SnapshotMessage {
   type: "snapshot";
@@ -36,6 +33,7 @@ const MAX_RETRY_DELAY_MS = 10_000;
 export function useMarketData(url: string, onUpdate: (rows: Row[]) => void) {
   const [snapshot, setSnapshot] = useState<Row[] | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const onUpdateRef = useRef(onUpdate);
   onUpdateRef.current = onUpdate;
 
@@ -44,6 +42,9 @@ export function useMarketData(url: string, onUpdate: (rows: Row[]) => void) {
     let ws: WebSocket | null = null;
     let retryDelay = INITIAL_RETRY_DELAY_MS;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    // Updates arrive ~1/sec; throttle the "last update" clock to match
+    // rather than re-rendering the header on every message.
+    let lastClockTick = 0;
 
     function connect() {
       if (cancelled) return;
@@ -61,6 +62,11 @@ export function useMarketData(url: string, onUpdate: (rows: Row[]) => void) {
           setSnapshot(message.rows);
         } else if (message.type === "update") {
           onUpdateRef.current(message.rows);
+          const now = Date.now();
+          if (now - lastClockTick >= 1000) {
+            lastClockTick = now;
+            setLastUpdate(new Date(now));
+          }
         }
       };
 
@@ -85,5 +91,5 @@ export function useMarketData(url: string, onUpdate: (rows: Row[]) => void) {
     };
   }, [url]);
 
-  return { snapshot, status };
+  return { snapshot, status, lastUpdate };
 }

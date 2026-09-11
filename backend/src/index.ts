@@ -1,6 +1,7 @@
 import { config } from "./config.js";
 import { pool } from "./db/pool.js";
-import { fetchSymbolUniverse, buildTokenLookup } from "./db/symbolUniverse.js";
+import { fetchSymbolUniverse } from "./db/symbolUniverse.js";
+import { buildTokenLookup } from "./db/tokenLookup.js";
 import { loadFilteredTicks } from "./market/loadFilteredTicks.js";
 import { bucketByTimestamp } from "./market/bucketByTimestamp.js";
 import { createMarketSimulator, type MarketSimulator } from "./market/simulator.js";
@@ -23,7 +24,13 @@ async function main() {
 
   const tokenLookup = buildTokenLookup(universe);
   const allowedTokens = new Set(tokenLookup.keys());
-  initRowState(universe.map((entry) => entry.symbol));
+  initRowState(
+    universe.map((entry) => ({
+      symbol: entry.symbol,
+      futureContractName: entry.foContractName,
+      futureExpiry: entry.foExpiry.toISOString(),
+    })),
+  );
 
   console.log("Loading + filtering CM market data...");
   const cmBuckets = bucketByTimestamp(

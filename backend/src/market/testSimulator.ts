@@ -1,6 +1,7 @@
 import { config } from "../config.js";
 import { pool } from "../db/pool.js";
-import { fetchSymbolUniverse, buildTokenLookup } from "../db/symbolUniverse.js";
+import { fetchSymbolUniverse } from "../db/symbolUniverse.js";
+import { buildTokenLookup } from "../db/tokenLookup.js";
 import { loadFilteredTicks } from "./loadFilteredTicks.js";
 import { bucketByTimestamp } from "./bucketByTimestamp.js";
 import { createMarketSimulator } from "./simulator.js";
