@@ -7,8 +7,9 @@
 // Example (FO file):
 //   35000 8 OPTIDX BANKNIFTY 1475159400 7260000 CE 30 30 5 601 5 2005 BANKNIFTY26SEP72600CE
 //
-// We only need columns 0 (token), 2 (instrumentType), 3 (symbol),
-// 4 (expiryDate — FO file only), 13 (contractName).
+// We need columns 0 (token), 2 (instrumentType), 3 (symbol),
+// 4 (expiryDate — FO file only), 7 (lotSize — FO file only, used to size
+// a spread in rupees per contract) and 13 (contractName).
 
 export interface CmContractRow {
   token: number;
@@ -22,6 +23,7 @@ export interface FoContractRow {
   symbol: string;
   instrumentType: string;
   expiryDateRaw: number;
+  lotSize: number;
   contractName: string;
 }
 
@@ -42,6 +44,7 @@ export function parseFoContractLine(line: string): FoContractRow {
     instrumentType: fields[2],
     symbol: fields[3],
     expiryDateRaw: Number(fields[4]),
+    lotSize: Number(fields[7]),
     contractName: fields[13],
   };
 }

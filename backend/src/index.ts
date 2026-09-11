@@ -5,10 +5,19 @@ import { buildTokenLookup } from "./db/tokenLookup.js";
 import { loadFilteredTicks } from "./market/loadFilteredTicks.js";
 import { bucketByTimestamp } from "./market/bucketByTimestamp.js";
 import { createMarketSimulator, type MarketSimulator } from "./market/simulator.js";
-import { initRowState, updateLeg } from "./market/rowState.js";
+import { initRowState, updateLeg, daysUntil } from "./market/rowState.js";
 import { createWsServer } from "./ws/server.js";
 
+function rssMb(): number {
+  return Math.round(process.memoryUsage().rss / 1024 / 1024);
+}
+
+function since(start: number): string {
+  return `${((performance.now() - start) / 1000).toFixed(1)}s`;
+}
+
 async function main() {
+  const bootStart = performance.now();
   console.log("Starting nse-cash-future-table backend...");
 
   const universe = await fetchSymbolUniverse();
@@ -25,26 +34,43 @@ async function main() {
   const tokenLookup = buildTokenLookup(universe);
   const allowedTokens = new Set(tokenLookup.keys());
   initRowState(
-    universe.map((entry) => ({
-      symbol: entry.symbol,
-      futureContractName: entry.foContractName,
-      futureExpiry: entry.foExpiry.toISOString(),
-    })),
+    universe.map((entry) => {
+      const expiryIso = entry.foExpiry.toISOString();
+      return {
+        symbol: entry.symbol,
+        futureContractName: entry.foContractName,
+        futureExpiry: expiryIso,
+        lotSize: entry.foLotSize,
+        daysToExpiry: daysUntil(expiryIso),
+      };
+    }),
   );
 
+  const cmStart = performance.now();
   console.log("Loading + filtering CM market data...");
-  const cmBuckets = bucketByTimestamp(
-    await loadFilteredTicks(config.cmMarketDataFile, allowedTokens, config.nseEpochOffsetSec),
+  const cmRows = await loadFilteredTicks(
+    config.cmMarketDataFile,
+    allowedTokens,
+    config.nseEpochOffsetSec,
   );
-  console.log(`CM: ${cmBuckets.length} buckets`);
+  const cmBuckets = bucketByTimestamp(cmRows);
+  console.log(
+    `CM: ${cmRows.length.toLocaleString()} rows -> ${cmBuckets.length.toLocaleString()} buckets in ${since(cmStart)} (rss ${rssMb()}MB)`,
+  );
 
+  const foStart = performance.now();
   console.log("Loading + filtering FO market data...");
-  const foBuckets = bucketByTimestamp(
-    await loadFilteredTicks(config.foMarketDataFile, allowedTokens, config.nseEpochOffsetSec),
+  const foRows = await loadFilteredTicks(
+    config.foMarketDataFile,
+    allowedTokens,
+    config.nseEpochOffsetSec,
   );
-  console.log(`FO: ${foBuckets.length} buckets`);
+  const foBuckets = bucketByTimestamp(foRows);
+  console.log(
+    `FO: ${foRows.length.toLocaleString()} rows -> ${foBuckets.length.toLocaleString()} buckets in ${since(foStart)} (rss ${rssMb()}MB)`,
+  );
 
-  const { broadcastUpdate, close: closeWsServer } = createWsServer();
+  const { broadcastUpdate, close: closeWsServer } = createWsServer(config.port);
 
   function applyTicks(changedTokens: number[], simulator: MarketSimulator): Set<string> {
     const touchedSymbols = new Set<string>();
@@ -69,6 +95,7 @@ async function main() {
   cmSimulator.start();
   foSimulator.start();
 
+  console.log(`Ready in ${since(bootStart)} (rss ${rssMb()}MB)`);
   console.log(`listening on ws://localhost:${config.port}`);
 
   process.on("SIGINT", () => {

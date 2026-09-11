@@ -16,6 +16,7 @@ CREATE TABLE fo_contracts (
   symbol           text not null,
   instrument_type  text not null,
   expiry_date      timestamptz not null,
+  lot_size         integer,
   contract_name    text
 );
 

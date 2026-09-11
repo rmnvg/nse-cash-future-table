@@ -32,18 +32,19 @@ async function insertFoBatch(
   if (rows.length === 0) return;
   const values: unknown[] = [];
   const placeholders = rows.map((row, i) => {
-    const base = i * 5;
+    const base = i * 6;
     values.push(
       row.token,
       row.symbol,
       row.instrumentType,
       row.expiryDate,
+      row.lotSize,
       row.contractName,
     );
-    return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`;
+    return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
   });
   await pool.query(
-    `INSERT INTO fo_contracts (token, symbol, instrument_type, expiry_date, contract_name)
+    `INSERT INTO fo_contracts (token, symbol, instrument_type, expiry_date, lot_size, contract_name)
      VALUES ${placeholders.join(", ")}
      ON CONFLICT (token) DO NOTHING`,
     values,

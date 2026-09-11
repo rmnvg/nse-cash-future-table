@@ -1,5 +1,4 @@
 import { WebSocketServer, WebSocket } from "ws";
-import { config } from "../config.js";
 import { computeRow, getAllSymbols } from "../market/rowState.js";
 
 export interface WsServerHandle {
@@ -8,8 +7,9 @@ export interface WsServerHandle {
   close(): Promise<void>;
 }
 
-export function createWsServer(): WsServerHandle {
-  const wss = new WebSocketServer({ port: config.port });
+/** Port is injected rather than read from config so this is testable standalone. */
+export function createWsServer(port: number): WsServerHandle {
+  const wss = new WebSocketServer({ port });
   const clients = new Set<WebSocket>();
 
   wss.on("connection", (ws) => {
@@ -46,6 +46,10 @@ export function createWsServer(): WsServerHandle {
   }
 
   function close(): Promise<void> {
+    // wss.close() waits for open sockets, so drop them first — otherwise a
+    // still-connected browser would stall shutdown indefinitely.
+    for (const client of clients) client.terminate();
+    clients.clear();
     return new Promise((resolve) => wss.close(() => resolve()));
   }
 

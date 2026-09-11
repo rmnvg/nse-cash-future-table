@@ -7,6 +7,7 @@ export interface SymbolUniverseEntry {
   foToken: number;
   foExpiry: Date;
   foContractName: string;
+  foLotSize: number | null;
 }
 
 export async function fetchSymbolUniverse(): Promise<SymbolUniverseEntry[]> {
@@ -19,9 +20,10 @@ export async function fetchSymbolUniverse(): Promise<SymbolUniverseEntry[]> {
 
   const result = await pool.query(`
     select cm.symbol, cm.token as cm_token, fo.token as fo_token,
-           fo.expiry_date as fo_expiry, fo.contract_name as fo_contract_name
+           fo.expiry_date as fo_expiry, fo.contract_name as fo_contract_name,
+           fo.lot_size as fo_lot_size
     from (
-      select distinct on (symbol) symbol, token, expiry_date, contract_name
+      select distinct on (symbol) symbol, token, expiry_date, contract_name, lot_size
       from fo_contracts
       ${testSymbolFilter}
       order by symbol, expiry_date asc
@@ -36,6 +38,7 @@ export async function fetchSymbolUniverse(): Promise<SymbolUniverseEntry[]> {
     foToken: row.fo_token,
     foExpiry: row.fo_expiry,
     foContractName: row.fo_contract_name,
+    foLotSize: row.fo_lot_size,
   }));
 }
 

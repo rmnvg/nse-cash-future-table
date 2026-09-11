@@ -35,8 +35,13 @@ describe("parseFoContractLine", () => {
       symbol: "RELIANCE",
       instrumentType: "FUTSTK",
       expiryDateRaw: 1475159400,
+      lotSize: 500,
       contractName: "RELIANCE26SEPFUT",
     });
+  });
+
+  it("reads the lot size used to size a spread per contract", () => {
+    expect(parseFoContractLine(FO_FUT_LINE).lotSize).toBe(500);
   });
 
   it("parses non-FUTSTK rows too — filtering happens at ingestion, not here", () => {
