@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "migrate": "tsx src/db/migrate.ts",
+    "ingest:contracts": "tsx src/ingest/loadContracts.ts",
+    "verify:contracts": "tsx src/ingest/verify.ts",
     "build": "tsc",
     "start": "node dist/index.js"
   },
