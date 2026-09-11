@@ -1,0 +1,61 @@
+:root {
+  color-scheme: light dark;
+  font: 16px/1.4 system-ui, "Segoe UI", Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+}
+
+.page-header h1 {
+  font-size: 22px;
+  margin: 0;
+}
+
+.status-pill {
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.status-connected {
+  background: rgba(34, 197, 94, 0.15);
+  color: #16a34a;
+}
+
+.status-connecting,
+.status-reconnecting {
+  background: rgba(234, 179, 8, 0.15);
+  color: #a16207;
+}
+
+.grid-wrapper {
+  flex: 1;
+  min-height: 0;
+  padding: 0 20px 20px;
+}
+
+.grid-wrapper .ag-root-wrapper {
+  height: 100%;
+}
