@@ -20,7 +20,17 @@ async function main() {
   const bootStart = performance.now();
   console.log("Starting nse-cash-future-table backend...");
 
-  const universe = await fetchSymbolUniverse();
+  const universe = await fetchSymbolUniverse().catch((err: NodeJS.ErrnoException) => {
+    if (err.code === "ECONNREFUSED") {
+      console.error(
+        `Cannot reach PostgreSQL at ${config.databaseUrl}\n` +
+          "Start it with `docker compose up -d` from the repo root, then retry.",
+      );
+      process.exit(1);
+    }
+    throw err;
+  });
+
   if (universe.length === 0) {
     console.error(
       "Symbol universe is empty — no stocks with both a cash and FUTSTK contract were found.\n" +

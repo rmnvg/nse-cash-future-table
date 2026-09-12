@@ -76,7 +76,7 @@ let server: WsServerHandle;
 beforeEach(async () => {
   initRowState(SYMBOLS);
   server = createWsServer(PORT);
-  await new Promise<void>((resolve) => server.wss.once("listening", () => resolve()));
+  await server.ready;
 });
 
 afterEach(async () => {
@@ -178,6 +178,24 @@ describe("WebSocket server", () => {
     expect(() => server.broadcastUpdate(new Set(["TCS"]))).not.toThrow();
 
     expect((await b.next()).rows[0].stockLtp).toBe(3);
+  });
+
+  it("answers GET /health with live server state", async () => {
+    const before = await fetch(`http://localhost:${PORT}/health`);
+    expect(before.status).toBe(200);
+    expect(await before.json()).toMatchObject({ status: "ok", symbols: 2, clients: 0 });
+
+    const client = await connect();
+    await client.next();
+
+    const during = await (await fetch(`http://localhost:${PORT}/health`)).json();
+    expect(during.clients).toBe(1);
+    expect(during.uptimeSeconds).toBeGreaterThanOrEqual(0);
+  });
+
+  it("404s on unknown HTTP routes", async () => {
+    const res = await fetch(`http://localhost:${PORT}/nope`);
+    expect(res.status).toBe(404);
   });
 
   it("routes simulator ticks through the token lookup to the right leg", async () => {

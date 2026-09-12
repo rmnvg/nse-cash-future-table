@@ -1,4 +1,4 @@
-import "./agGridSetup";
+import { darkTheme, lightTheme } from "./agGridSetup";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import type { ColDef } from "ag-grid-community";
@@ -55,11 +55,20 @@ const spreadCol: Partial<ColDef<Row>> = {
   cellClassRules: signedCellClass,
 };
 
-// The five columns the brief asks for are always visible, in order. The
-// bid/ask the backend streams, the resolved future contract and the derived
-// basis metrics sit behind the "details" toggle, so the default view matches
-// the spec exactly.
-function buildColumnDefs(showDetails: boolean): ColDef<Row>[] {
+const annualisedBasisCol: ColDef<Row> = {
+  field: "annualizedBasisPct",
+  headerName: "Ann. Basis",
+  headerTooltip: "Basis annualised over days to expiry — comparable across stocks",
+  ...priceCol,
+  cellClass: undefined,
+  cellClassRules: signedCellClass,
+  valueFormatter: (params) => formatPct(params.value),
+  minWidth: 120,
+};
+
+// The five columns the brief asks for are always visible, in order. Everything
+// else is opt-in, so the default view matches the spec exactly.
+function buildColumnDefs(showDetails: boolean, showBasis: boolean): ColDef<Row>[] {
   const required: ColDef<Row>[] = [
     {
       field: "symbol",
@@ -84,21 +93,14 @@ function buildColumnDefs(showDetails: boolean): ColDef<Row>[] {
     },
   ];
 
-  if (!showDetails) return required;
+  if (!showDetails) {
+    // Ranking by basis shows the one column being ranked on, nothing more.
+    return showBasis ? [...required, annualisedBasisCol] : required;
+  }
 
   return [
     ...required,
-    {
-      field: "annualizedBasisPct",
-      headerName: "Ann. Basis",
-      headerTooltip:
-        "Basis annualised over days to expiry — comparable across stocks",
-      ...priceCol,
-      cellClass: undefined,
-      cellClassRules: signedCellClass,
-      valueFormatter: (params) => formatPct(params.value),
-      minWidth: 120,
-    },
+    annualisedBasisCol,
     {
       field: "basisPct",
       headerName: "Basis %",
@@ -162,6 +164,24 @@ function buildColumnDefs(showDetails: boolean): ColDef<Row>[] {
 
 type SortMode = "symbol" | "opportunity";
 
+const DARK_QUERY = "(prefers-color-scheme: dark)";
+
+/** AG Grid themes are objects, not CSS, so the scheme has to be picked in JS. */
+function usePrefersDark(): boolean {
+  const [dark, setDark] = useState(
+    () => window.matchMedia?.(DARK_QUERY).matches ?? false,
+  );
+
+  useEffect(() => {
+    const query = window.matchMedia(DARK_QUERY);
+    const onChange = (event: MediaQueryListEvent) => setDark(event.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+
+  return dark;
+}
+
 const statusLabel: Record<string, string> = {
   connecting: "Connecting…",
   connected: "Connected",
@@ -173,19 +193,50 @@ export default function CashFutureTable() {
   const [showDetails, setShowDetails] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>("symbol");
   const [quickFilter, setQuickFilter] = useState("");
+  const [paused, setPaused] = useState(false);
+  const [visibleRows, setVisibleRows] = useState<number | null>(null);
+  const prefersDark = usePrefersDark();
+
+  // Ticks arrive off the React render cycle, so the pause flag and the
+  // buffer of what was missed both live in refs.
+  const pausedRef = useRef(false);
+  const missedRef = useRef(new Map<string, Row>());
 
   const handleUpdate = useCallback((rows: Row[]) => {
+    if (pausedRef.current) {
+      // Keep only the newest row per symbol, so resuming applies one
+      // transaction with current prices rather than replaying history.
+      for (const row of rows) missedRef.current.set(row.symbol, row);
+      return;
+    }
     gridRef.current?.api?.applyTransaction({ update: rows });
   }, []);
 
   const { snapshot, status, lastUpdate } = useMarketData(WS_URL, handleUpdate);
 
-  // Ranking by annualised basis needs that column present to sort on.
-  const detailsVisible = showDetails || sortMode === "opportunity";
+  const togglePause = useCallback(() => {
+    setPaused((wasPaused) => {
+      const nowPaused = !wasPaused;
+      pausedRef.current = nowPaused;
+      if (!nowPaused && missedRef.current.size > 0) {
+        gridRef.current?.api?.applyTransaction({
+          update: [...missedRef.current.values()],
+        });
+        missedRef.current.clear();
+      }
+      return nowPaused;
+    });
+  }, []);
+
+  const exportCsv = useCallback(() => {
+    gridRef.current?.api?.exportDataAsCsv({
+      fileName: `cash-future-${new Date().toISOString().slice(0, 19)}.csv`,
+    });
+  }, []);
 
   const columnDefs = useMemo(
-    () => buildColumnDefs(detailsVisible),
-    [detailsVisible],
+    () => buildColumnDefs(showDetails, sortMode === "opportunity"),
+    [showDetails, sortMode],
   );
 
   // `sort` on a colDef is only an initial value, so drive it through column
@@ -200,12 +251,20 @@ export default function CashFutureTable() {
           : [{ colId: "symbol", sort: "asc" }],
       defaultState: { sort: null },
     });
-  }, [sortMode, detailsVisible, snapshot]);
+  }, [sortMode, showDetails, snapshot]);
+
+  const updateVisibleRows = useCallback(() => {
+    const api = gridRef.current?.api;
+    if (api) setVisibleRows(api.getDisplayedRowCount());
+  }, []);
 
   const getRowId = useMemo(
     () => (params: { data: Row }) => params.data.symbol,
     [],
   );
+
+  const total = snapshot?.length ?? 0;
+  const filtered = visibleRows !== null && visibleRows !== total;
 
   return (
     <div className="page">
@@ -215,8 +274,13 @@ export default function CashFutureTable() {
           <span className={`status-pill status-${status}`}>
             {statusLabel[status]}
           </span>
-          {snapshot && <span className="meta">{snapshot.length} stocks</span>}
-          {lastUpdate && (
+          {paused && <span className="status-pill status-paused">Paused</span>}
+          {snapshot && (
+            <span className="meta">
+              {filtered ? `${visibleRows} of ${total}` : `${total}`} stocks
+            </span>
+          )}
+          {lastUpdate && !paused && (
             <span className="meta">
               updated {lastUpdate.toLocaleTimeString()}
             </span>
@@ -244,17 +308,23 @@ export default function CashFutureTable() {
           <label className="toggle">
             <input
               type="checkbox"
-              checked={detailsVisible}
-              disabled={sortMode === "opportunity"}
+              checked={showDetails}
               onChange={(e) => setShowDetails(e.target.checked)}
             />
             Details
           </label>
+          <button type="button" className="btn" onClick={togglePause}>
+            {paused ? "Resume" : "Pause"}
+          </button>
+          <button type="button" className="btn" onClick={exportCsv}>
+            Export CSV
+          </button>
         </div>
       </header>
       <div className="grid-wrapper">
         <AgGridReact<Row>
           ref={gridRef}
+          theme={prefersDark ? darkTheme : lightTheme}
           rowData={snapshot ?? []}
           columnDefs={columnDefs}
           getRowId={getRowId}
@@ -262,6 +332,12 @@ export default function CashFutureTable() {
           defaultColDef={{ resizable: true, sortable: true }}
           cellFlashDuration={800}
           animateRows
+          onModelUpdated={updateVisibleRows}
+          overlayNoRowsTemplate={
+            status === "connected"
+              ? "Waiting for the first snapshot…"
+              : "Not connected to the market data server — check the backend is running."
+          }
         />
       </div>
     </div>

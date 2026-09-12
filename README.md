@@ -5,7 +5,7 @@
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![Node.js](https://img.shields.io/badge/Node.js-22-339933?logo=nodedotjs&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-56%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-58%20passing-brightgreen)
 
 **A real-time NSE cash–future arbitrage table.** A Node.js/WebSocket backend
 replays ~29M recorded ticks, PostgreSQL holds the contract reference data,
@@ -53,15 +53,23 @@ alongside its **nearest-expiry** future, and the two spreads between them:
 210 stocks qualify. Each gets exactly one row, updated in place as ticks
 arrive.
 
+Those five are the default view. The toolbar adds **filter by symbol**,
+**Rank** (alphabetical or by annualised basis), a **Details** toggle that
+reveals bid/ask, basis, lot size, days-to-expiry and the resolved contract,
+**Pause** to freeze the stream while you read, and **Export CSV**.
+
 ## Highlights
 
 - **Real-time by transaction, not re-render.** Only the symbols that changed
   in a tick are broadcast, and AG Grid applies them via `applyTransaction`
   keyed by `getRowId` — a tick repaints a handful of cells, not 210 rows.
+- **Built to actually be used.** Pause the stream to read a row without it
+  moving (missed ticks are buffered and applied on resume), filter by symbol,
+  export the current view to CSV, and a dark theme that follows the OS.
 - **Ranks opportunities, not just prices.** Derives basis % and *annualised*
   basis %, so stocks at wildly different price levels become comparable.
   [See below](#beyond-the-brief-ranking-by-opportunity).
-- **56 tests, no fixtures required.** Unit *and* WebSocket integration tests
+- **58 tests, no fixtures required.** Unit *and* WebSocket integration tests
   that need neither Postgres nor the 950MB of CSVs, so CI stays green.
 - **Measured, not guessed.** [Real numbers](#measured-performance) for cold
   start, memory, payload size and throughput.
@@ -262,6 +270,13 @@ npm run dev     # from the repo root, starts both servers
 Or separately, with `npm run dev` inside `backend/` and `frontend/`. The
 frontend defaults to `ws://localhost:8080`; override with `VITE_WS_URL`
 (see `frontend/.env.example`).
+
+To check the backend without opening a browser:
+
+```bash
+curl localhost:8080/health
+# {"status":"ok","symbols":210,"clients":0,"uptimeSeconds":11}
+```
 </details>
 
 ## Tests
@@ -270,7 +285,7 @@ frontend defaults to `ws://localhost:8080`; override with `VITE_WS_URL`
 npm test        # from the repo root, or inside backend/
 ```
 
-**56 tests across 7 files, ~300ms.** They need neither Postgres nor the CSV
+**58 tests across 7 files, ~300ms.** They need neither Postgres nor the CSV
 files — which is exactly what lets CI run them on every push.
 
 | Suite | Covers |
@@ -281,7 +296,7 @@ files — which is exactly what lets CI run them on every push.
 | `tokenLookup.test.ts` | Both legs routed, unknown tokens ignored |
 | `rowState.test.ts` | Spread formulas, partial-leg nulls (never `NaN`), rounding, basis, annualisation, zero-spot guard, lot sizing |
 | `simulator.test.ts` | Paise conversion, changed-token reporting, **loop-back wrap**, idempotent start, empty buckets |
-| `server.test.ts` | **Integration** — real WebSocket server + real row state + stub simulator: snapshot on connect, nulls before first tick, deltas carry only changed symbols, fan-out to multiple clients, survives a client disconnecting mid-broadcast |
+| `server.test.ts` | **Integration** — real WebSocket server + real row state + stub simulator: snapshot on connect, nulls before first tick, deltas carry only changed symbols, fan-out to multiple clients, survives a client disconnecting mid-broadcast, `/health` reflects live state |
 
 ## Measured performance
 
@@ -356,6 +371,12 @@ Findings from inspecting the real files, each of which changed the implementatio
   from the backend (type-only, erased at build), so the two can't drift.
 - **The WebSocket port is injected, not read from config**, which is what
   makes the server testable without any environment at all.
+- **The WebSocket rides on a plain HTTP server**, which costs nothing and
+  gives somewhere to answer `GET /health` — so liveness can be checked with
+  `curl` rather than a WebSocket client.
+- **Shutdown terminates sockets before closing.** `wss.close()` waits on open
+  connections, so a single connected browser tab would otherwise hang SIGINT
+  forever. (Found by the integration tests, not in production.)
 
 ## Project layout
 
@@ -365,10 +386,11 @@ backend/src
   db/                    pool, schema, migration, symbol universe, token routing
   ingest/                streaming line reader, contract parsers, bulk loader
   market/                tick parsing, filtering, bucketing, replay, row state
-  ws/                    WebSocket server, snapshot + delta broadcast
+  ws/                    WebSocket server, snapshot + delta broadcast, /health
 frontend/src
   useMarketData.ts       WebSocket client, reconnect, snapshot vs delta split
   CashFutureTable.tsx    AG Grid setup, columns, transactions, ranking
+  agGridSetup.ts         module registration, light/dark themes
 .github/workflows/ci.yml tests + both builds on every push
 ```
 
